@@ -18,8 +18,15 @@ pipi() {                                     # pip, а если его нет у
 ok() { echo "  ✓ $*"; }
 
 echo "== 1/5 Проверка образа"
-$PY -c "import vllm, torch; print('  vLLM', vllm.__version__, '| torch', torch.__version__, '| CUDA', torch.version.cuda)" \
-  || { echo "[!] В образе нет vLLM — выберите шаблон vllm-latest"; exit 1; }
+command -v nvidia-smi >/dev/null || { echo "[!] В поде нет GPU (RUNPOD_GPU_COUNT=${RUNPOD_GPU_COUNT:-?}) — пересоздайте под с 1× L4"; exit 1; }
+if ! $PY -c "import vllm" 2>/dev/null; then
+  # шаблон RunPod PyTorch: vLLM ставим сами (≈3–5 мин, кэш колёс — на /workspace)
+  echo "  vLLM нет в образе — ставлю (${VLLM_PIP:-vllm>=0.11})..."
+  export PIP_BREAK_SYSTEM_PACKAGES=1
+  $PY -m pip install -q "${VLLM_PIP:-vllm>=0.11}" || { echo "[!] vLLM не установился"; exit 1; }
+fi
+$PY -c "import vllm, torch; print('  vLLM', vllm.__version__, '| torch', torch.__version__, '| CUDA', torch.version.cuda, '| GPU', torch.cuda.is_available())" \
+  || { echo "[!] vLLM не импортируется"; exit 1; }
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader | sed 's/^/  GPU: /'
 command -v curl >/dev/null || (apt-get update -qq && apt-get install -y -qq curl >/dev/null)
 
