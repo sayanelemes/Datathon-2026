@@ -1,0 +1,18 @@
+# данные проверок и веса — не в репозиторий (ТЗ: тестовые видео нельзя публиковать)
+jobs/
+uploads/
+results/
+models/
+static/fonts/
+*.mov
+*.mp4
+!static/demo/demo.mp4
+# секреты
+.env
+2mp_api_key
+# служебное
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.log

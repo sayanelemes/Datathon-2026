@@ -1,0 +1,131 @@
+# Rule Engine (Следопыт): пороги детектора, трекера, ролей и правил.
+# Путь задаётся переменной RULES_CONFIG. Каталог типов нарушений и норм — configs/violations.yaml.
+#
+# Каждое правило:
+#   enabled            — включено ли правило
+#   maps_to            — тип из configs/violations.yaml, под которым нарушение попадёт в отчёт
+#   requires_vlm       — true: нужно подтверждение Qwen; false: правило детерминированное,
+#                        Qwen может только ОТКЛОНИТЬ его (veto), если уверенно не видит нарушения
+#   confidence         — предварительная уверенность правила (preliminary_confidence)
+# Если Qwen недоступен или вернул невалидный JSON, правило с confidence >= decision.unverified_min
+# попадает в отчёт с пометкой verification=unverified и object_type=unknown.
+
+detector:                     # YOLOX COCO (Apache 2.0) — телефоны и мелкие предметы; люди — YOLOX из rtmlib
+  model: yolox_s.onnx         # файл в MODELS_DIR; переменная OBJ_DET_MODEL важнее
+  input_size: 640             # yolox_s — 640, yolox_tiny/nano — 416
+  score_thr: 0.30             # порог детекции
+  nms_thr: 0.45
+  use_for_persons: false      # true — людей тоже берём из COCO YOLOX (одна сеть вместо двух)
+  classes:                    # индексы COCO-80 (с нуля)
+    person: [0]
+    phone: [67]               # cell phone
+    small_object: [24, 26, 28, 65, 73]   # рюкзак, сумка, чемодан, пульт, книга/бумаги (купюры COCO не знает — их видит Qwen)
+
+tracker:                      # ByteTrack
+  track_thresh: 0.50          # «уверенные» детекции (первый проход)
+  low_thresh: 0.10            # «слабые» детекции (второй проход — держат трек при перекрытии)
+  new_track_thresh: 0.60
+  match_iou: 0.20             # минимальный IoU для первого прохода
+  low_match_iou: 0.50         # для второго прохода
+  lost_match_iou: 0.50        # потерянный трек продолжается только при сильном перекрытии (не «передаём» id другому человеку)
+  track_buffer_sec: 2.0       # сколько секунд держать потерянный трек
+  min_box_area: 0.0005        # доля кадра; меньшие рамки людей отбрасываются
+
+roles:
+  cashier_min_zone_share: 0.3 # кассир — дольше всех в cashier_zone, но не меньше этой доли своего времени
+  client_min_zone_share: 0.5  # клиент — большую часть времени в client_zone (если зона есть)
+  min_track_sec: 1.0          # короткие треки — UNKNOWN
+  cashier_home_radius: 0.6    # новый трек = вернувшийся кассир, только если появился на месте кассира (доля ширины рамки)
+                              # и не приходил со стороны клиента — иначе это посторонний
+
+pose:
+  keypoint_thr: 0.35
+
+rules:
+  transfer_of_item:
+    enabled: true
+    maps_to: PAYOUT_NO_RECOUNT     # Qwen уточнит тип (выдача без пересчёта / сокрытие / иное) или отклонит
+    requires_vlm: true
+    min_duration_sec: 0.5
+    near_factor: 1.0               # руки кассира и клиента ближе near_factor × ширина плеч
+    require_object: false          # true — только если small_object между руками (купюры детектор не видит!)
+    object_between_factor: 0.6     # предмет не дальше этой доли ширины плеч от отрезка «рука–рука»
+    min_progress: 0.15             # предмет сместился от кассира к клиенту минимум на эту долю отрезка
+    confidence: 0.35               # без предмета
+    confidence_with_object: 0.55   # предмет есть и движется от кассира к клиенту
+    max_candidates: 4
+
+  phone_use_during_service:
+    enabled: true
+    maps_to: PHONE_AT_CASH_DESK
+    requires_vlm: true
+    min_duration_sec: 2.0
+    near_factor: 0.8               # телефон ближе near_factor × ширина плеч к руке или лицу кассира
+    client_window_sec: 5.0         # клиент присутствует в пределах ± этого окна
+    require_client: true
+    confidence: 0.6
+    max_candidates: 3
+
+  cashier_left_workspace:
+    enabled: true
+    maps_to: CASHIER_LEFT_DURING_SERVICE
+    requires_vlm: false
+    min_absence_sec: 10.0          # отсутствие >= 10 с — нарушение по правилу (Qwen может только отклонить)
+    soft_absence_sec: 3.0          # 3–10 с — только кандидат для проверки Qwen
+    require_client: true           # для детерминированного срабатывания рядом должен быть клиент
+    client_window_sec: 5.0
+    confidence: 0.75
+    soft_confidence: 0.5
+    max_candidates: 3
+
+  unauthorized_person_in_restricted_zone:
+    enabled: true
+    maps_to: UNAUTHORIZED_PERSON
+    requires_vlm: false
+    min_duration_sec: 3.0
+    confidence: 0.65
+    max_candidates: 3
+
+  client_in_restricted_zone:
+    enabled: true
+    maps_to: UNAUTHORIZED_PERSON
+    requires_vlm: false
+    min_duration_sec: 2.0
+    confidence: 0.7
+    max_candidates: 3
+
+  # Правила по рукам (были в pose.py) — только подсказки для перепроверки Qwen
+  hand_below_desk:
+    enabled: true
+    maps_to: CASH_CONCEALMENT
+    requires_vlm: true
+    min_duration_sec: 1.0
+    low_margin: 0.15               # запястье ниже линии бёдер на эту долю ширины плеч
+    after_transfer_sec: 10.0
+    confidence: 0.4
+    confidence_after_transfer: 0.55
+    max_candidates: 3
+
+  hand_near_head:
+    enabled: true
+    maps_to: PHONE_AT_CASH_DESK
+    requires_vlm: true
+    min_duration_sec: 2.0
+    near_factor: 0.6
+    confidence: 0.45
+    max_candidates: 3
+
+engine:
+  max_candidates_total: 8          # больше кандидатов — дольше перепроверка (лимит 300 с)
+
+decision:
+  unverified_min: 0.5              # Qwen недоступен: правило с такой уверенностью попадает в отчёт как unverified
+  veto_confidence: 0.25            # Qwen отклоняет детерминированное правило, если violation=false и confidence < этого
+
+visualization:
+  enabled: true                    # переменная VIS_ENABLED важнее
+  fps: 15                          # частота кадров аннотированного видео
+  max_side: 960
+  min_person_score: 0.4            # не рисуем слабые детекции
+  min_object_score: 0.35
+  zone_alpha: 0.18

@@ -1,0 +1,20 @@
+# сервис (API + воркер)
+fastapi>=0.115
+uvicorn>=0.29
+python-multipart
+pydantic>=2.5
+requests
+pyyaml
+numpy
+opencv-python-headless
+# Следопыт: RTMPose / YOLOX (rtmlib, Apache 2.0) на onnxruntime
+rtmlib
+onnxruntime-gpu
+tqdm
+# очередь Redis (docker compose); без REDIS_URL не нужна
+redis>=5
+# Legal-RAG: PDF в legal_base/ (необязательно; TXT работает без него)
+pypdf
+# ffmpeg для видео с разметкой (H.264), если в системе нет ffmpeg
+imageio-ffmpeg
+# модель Qwen: vLLM ставится отдельно (pip install "vllm>=0.11") или контейнер vllm/vllm-openai

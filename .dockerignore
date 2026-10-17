@@ -1,0 +1,12 @@
+.git
+.venv
+__pycache__
+*.pyc
+jobs
+uploads
+results
+models
+laptop
+*.mov
+*.mp4
+!static/**
