@@ -46,7 +46,7 @@ start_vllm() {
   [ -f "$LOGS/vllm.log" ] && mv -f "$LOGS/vllm.log" "$LOGS/vllm.prev.log"   # журнал — только текущего запуска
   nohup vllm serve "$MODEL_DIR" --served-model-name qwen --host 127.0.0.1 --port "$VPORT" \
     --max-model-len "${MAX_LEN:-16384}" --max-num-seqs "${MAX_NUM_SEQS:-32}" \
-    --limit-mm-per-prompt "{\"image\":${VLM_MAX_IMAGES:-16}}" --gpu-memory-utilization "${GPU_UTIL:-0.80}" \
+    --limit-mm-per-prompt "{\"image\":${VLM_MAX_IMAGES:-16},\"video\":0}" $( [ -n "$KV_DTYPE" ] && echo --kv-cache-dtype "$KV_DTYPE" ) --gpu-memory-utilization "${GPU_UTIL:-0.80}" \
     --enable-prefix-caching >> "$LOGS/vllm.log" 2>&1 &
   echo $! > "$LOGS/vllm.pid"
   for i in $(seq 1 120); do                 # до 10 минут
