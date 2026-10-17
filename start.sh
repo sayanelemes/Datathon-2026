@@ -22,7 +22,7 @@ export PROFILE
 
 # защита от двойного запуска: две копии подняли бы два vLLM, и второй упал бы без видеопамяти
 exec 9>/tmp/2mp_start.lock
-if ! flock -n 9; then echo "[!] start.sh уже запущен. Остановить: pkill -f 'start.sh'; pkill -f 'vllm serve'; pkill -f 'uvicorn app:app'"; exit 1; fi
+if ! flock -n 9; then echo "[!] start.sh уже запущен. Остановить: bash stop.sh"; exit 1; fi
 
 WS=/workspace; [ -d "$WS" ] || WS="$PWD"
 [ -z "$API_KEY" ] && [ -f "$WS/2mp_api_key" ] && API_KEY="$(cat "$WS/2mp_api_key")"
@@ -96,7 +96,7 @@ echo "Сервис: http://0.0.0.0:8000   Ключ API: $API_KEY"
     fails=$((fails + 1))
     [ "$fails" -lt 3 ] && continue                     # 3 провала подряд (~1 мин) — не дёргаем из-за одной заминки
     echo "$(date +%T) модель не отвечает минуту — перезапуск" >> "$LOGS/watchdog.log"
-    if [ -f "$LOGS/vllm.pid" ]; then kill "$(cat "$LOGS/vllm.pid")" 2>/dev/null || true; sleep 10; fi
+    pkill -f "vllm serve" 2>/dev/null; pkill -f -i enginecore 2>/dev/null; sleep 10   # вместе с EngineCore, иначе видеопамять не освободится
     ( start_model ) >> "$LOGS/watchdog.log" 2>&1 || true
     fails=0
   done
