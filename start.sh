@@ -20,6 +20,10 @@ while IFS='=' read -r k v; do
 done < "$PF"
 export PROFILE
 
+# защита от двойного запуска: две копии подняли бы два vLLM, и второй упал бы без видеопамяти
+exec 9>/tmp/2mp_start.lock
+if ! flock -n 9; then echo "[!] start.sh уже запущен. Остановить: pkill -f 'start.sh'; pkill -f 'vllm serve'; pkill -f 'uvicorn app:app'"; exit 1; fi
+
 WS=/workspace; [ -d "$WS" ] || WS="$PWD"
 [ -z "$API_KEY" ] && [ -f "$WS/2mp_api_key" ] && API_KEY="$(cat "$WS/2mp_api_key")"
 export API_KEY="${API_KEY:?Укажите ключ: API_KEY=... ./start.sh $PROFILE (или запустите runpod/setup.sh)}"
