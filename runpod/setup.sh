@@ -6,8 +6,10 @@ set -e
 cd "$(dirname "$0")/.."
 PROFILE="${1:-l4}"
 WS=/workspace; [ -d "$WS" ] || { echo "[!] Нет /workspace — подключите сетевой диск к поду"; exit 1; }
-export HF_HOME=$WS/.cache/huggingface PIP_CACHE_DIR=$WS/.cache/pip
-mkdir -p "$HF_HOME" "$PIP_CACHE_DIR" "$WS/models" "$WS/logs" "$WS/bin" "$WS/.cache/rtmlib"
+# Сетевой диск RunPod (Global Volume) не разрешает chmod: код, pip-кэш и исполняемые файлы — на диске контейнера,
+# на /workspace — только данные (веса, кэш Hugging Face, ключ, задачи, журналы).
+export HF_HOME=$WS/.cache/huggingface PIP_CACHE_DIR=$HOME/.cache/pip
+mkdir -p "$HF_HOME" "$PIP_CACHE_DIR" "$WS/models" "$WS/logs" "$HOME/bin" "$WS/.cache/rtmlib"
 set -a; . "profiles/$PROFILE.env"; set +a
 PY=python3
 export PIP_BREAK_SYSTEM_PACKAGES=1 PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -65,7 +67,7 @@ echo "== 5/5 Ключ API и cloudflared"
 if [ ! -s "$WS/2mp_api_key" ]; then
   $PY -c "import secrets; print('2mp-' + secrets.token_urlsafe(24))" > "$WS/2mp_api_key"
 fi
-chmod 600 "$WS/2mp_api_key"
+chmod 600 "$WS/2mp_api_key" 2>/dev/null || true      # на сетевом диске RunPod chmod запрещён
 ok "ключ: $(cat "$WS/2mp_api_key")   (файл $WS/2mp_api_key, доступ только владельцу)"
 # шрифт сайта — на диск: страница не обращается к Google Fonts (работа без интернета, внутренний контур)
 if [ ! -s static/fonts/onest.css ]; then
@@ -81,9 +83,9 @@ if [ ! -s static/fonts/onest.css ]; then
     echo "  [i] шрифт не скачался — сайт покажет системный шрифт"
   fi
 fi
-if [ ! -x "$WS/bin/cloudflared" ]; then
-  curl -fsSL -o "$WS/bin/cloudflared" https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
-    && chmod +x "$WS/bin/cloudflared" && ok "cloudflared скачан" || echo "  [i] cloudflared не скачался — не страшно, есть ссылка RunPod"
+if [ ! -x "$HOME/bin/cloudflared" ]; then
+  curl -fsSL -o "$HOME/bin/cloudflared" https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+    && chmod +x "$HOME/bin/cloudflared" && ok "cloudflared скачан" || echo "  [i] cloudflared не скачался — не страшно, есть ссылка RunPod"
 fi
 
 echo

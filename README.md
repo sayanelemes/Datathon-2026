@@ -29,7 +29,7 @@ POST /api/v1/analyze (.mov, X-API-Key) → uploads/{job_id}.mov → очеред
 
 **Первый раз (≈15 мин, в основном скачивание ~10 ГБ весов):**
 ```bash
-cd /workspace && unzip -o cashguard.zip && cd cashguard
+cd /root && git clone https://<токен>@github.com/sayanelemes/Datathon-2026.git cashguard && cd cashguard   # код — на диске контейнера: на сетевом диске RunPod git не может менять права файлов
 bash runpod/setup.sh l4     # библиотеки, веса Qwen и RTMPose, ключ API, cloudflared
 bash start.sh l4            # vLLM + сервис + сторож; в конце печатает ссылку и ключ
 ```
@@ -60,7 +60,7 @@ python3 tools/selftest.py --offline --video <видео>.mov
 127.0.0.1, `HF_HUB_OFFLINE=1`. Итог «анализ работает полностью локально» = 0 попыток и 0 внешних соединений.
 
 **Чтобы сервис поднимался сам после рестарта пода:** в шаблоне Start Command поставьте
-`bash /workspace/cashguard/runpod/boot.sh` (вместо `sleep infinity`). Журналы — `/workspace/logs/`.
+`bash /root/cashguard/runpod/boot.sh` (вместо `sleep infinity`). Журналы — `/workspace/logs/`.
 
 Важно:
 - Ссылка RunPod привязана к поду: после **Terminate** будет новый POD_ID — новую ссылку придётся переслать жюри.

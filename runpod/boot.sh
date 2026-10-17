@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start Command для шаблона RunPod:  bash /workspace/cashguard/runpod/boot.sh
+# Start Command для шаблона RunPod:  bash /root/cashguard/runpod/boot.sh
 # При каждом старте пода: доставить библиотеки (быстро, из кэша), поднять сервис в фоне, держать контейнер живым.
 cd "$(dirname "$0")/.."
 PROFILE="${PROFILE:-l4}"

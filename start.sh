@@ -24,7 +24,7 @@ WS=/workspace; [ -d "$WS" ] || WS="$PWD"
 [ -z "$API_KEY" ] && [ -f "$WS/2mp_api_key" ] && API_KEY="$(cat "$WS/2mp_api_key")"
 export API_KEY="${API_KEY:?Укажите ключ: API_KEY=... ./start.sh $PROFILE (или запустите runpod/setup.sh)}"
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-export HF_HOME="${HF_HOME:-$WS/.cache/huggingface}" VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-$WS/.cache/vllm}"
+export HF_HOME="${HF_HOME:-$WS/.cache/huggingface}" VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-$HOME/.cache/vllm}"   # кэш компиляции — на диске контейнера (на сетевом диске нет chmod)
 export DATA_DIR="${DATA_DIR:-$WS/2mp_jobs}" UPLOAD_DIR="${UPLOAD_DIR:-$WS/2mp_uploads}" RESULTS_DIR="${RESULTS_DIR:-$WS/2mp_results}"
 export LEGAL_INDEX_DIR="${LEGAL_INDEX_DIR:-$DATA_DIR/_legal_index}"
 [ "$WS" = /workspace ] && export MODELS_DIR="${MODELS_DIR:-$WS/models/detector}"   # иначе — ./models (как у fetch_models.py)
@@ -68,7 +68,7 @@ echo "$(date +%T) прогрев модели..."
 $PY -I tools/selftest.py --quick >/dev/null 2>&1 || echo "[i] прогрев не прошёл — подробности: $PY tools/selftest.py"
 
 if [ "${TUNNEL:-0}" = "1" ]; then
-  CF="$(command -v cloudflared || echo "$WS/bin/cloudflared")"
+  CF="$(command -v cloudflared || echo "$HOME/bin/cloudflared")"
   if [ -x "$CF" ]; then
     nohup "$CF" tunnel --no-autoupdate --url http://localhost:8000 > "$LOGS/tunnel.log" 2>&1 &
     echo "Туннель: ссылка появится в $LOGS/tunnel.log (grep trycloudflare)"
