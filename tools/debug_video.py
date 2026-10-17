@@ -20,6 +20,7 @@ def main():
     ap.add_argument("video")
     ap.add_argument("--at", type=float, help="момент для перепроверки, с")
     ap.add_argument("--zone", action="store_true", help="искать зону кассы (как в пайплайне)")
+    ap.add_argument("--near", type=float, default=0, help="показывать только окна в пределах ±N с от --at")
     a = ap.parse_args()
 
     v = p.Video(a.video)
@@ -29,6 +30,8 @@ def main():
     while s < max(v.dur - 0.5, 0.01):
         starts.append(round(s, 2))
         s += p.STRIDE_SEC
+    if a.near and a.at is not None:
+        starts = [st for st in starts if st + p.WIN_SEC >= a.at - a.near and st <= a.at + a.near]
     step = p.WIN_SEC / p.SCAN_FRAMES
     wins = [sorted(v.frames([v.clamp(st + i * step) for i in range(p.SCAN_FRAMES)]).items()) for st in starts]
     with ThreadPoolExecutor(p.PARALLEL) as ex:
