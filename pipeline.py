@@ -64,6 +64,12 @@ with open(RULES_PATH, encoding="utf-8") as _f:
 _DEC = settings.rules_config().get("decision") or {}
 UNVERIFIED_MIN = float(E("UNVERIFIED_MIN", _DEC.get("unverified_min", 0.5)))
 VETO_T = float(E("VETO_T", _DEC.get("veto_confidence", 0.25)))
+# --- ручки решения (подбираются tools/tune.py по журналу решений, применяются через профиль) ---
+VOTE_RULE = E("VOTE_RULE", "tie")           # tie: «да» ≥ половины голосов; majority: строго больше; all: все «да»
+DET_MODE = E("DET_MODE", "veto")            # детерминированные правила: veto — Qwen может только отклонить;
+                                            # confirm — нужно «да» Qwen, как у остальных; off — не использовать
+TYPE_THRESH = {k.strip(): float(v) for k, v in (x.split("=") for x in E("TYPE_THRESH", "").split(",") if "=" in x)}
+DISABLED_TYPES = {x.strip() for x in E("DISABLED_TYPES", "").split(",") if x.strip()}
 
 try:
     import pose  # Следопыт (rtmlib); если не установлен — выключен
@@ -467,7 +473,7 @@ def analyze(path, progress=lambda p, msg: None, t0=None):
     cands = nms([c for c in cands if c.get("requires_vlm") is not False], gap=VERIFY_SEC * 0.6) + det
 
     # ---- 4. перепроверка + голосование ----
-    events = []
+    events, debug = [], []
     if cands and left() > 20 and not vlm_down:
         progress(70, f"Перепроверка подозрительных моментов: {len(cands)}")
         jobs = []
@@ -493,7 +499,9 @@ def analyze(path, progress=lambda p, msg: None, t0=None):
         finally:
             ex.shutdown(wait=False, cancel_futures=True)
         for c in cands:
-            events += decide(c, zone)
+            ev = decide(c, zone)
+            events += ev
+            debug.append(_cand_debug(c, bool(ev)))
     else:  # нет времени на проверку или Qwen недоступен — решаем по скану и правилам
         for c in cands:
             if c["src"] == "scan" and c["s"] >= THRESH:
@@ -503,6 +511,7 @@ def analyze(path, progress=lambda p, msg: None, t0=None):
                 events.append(_rule_event(c, "unverified"))
 
     progress(92, "Подготовка кадров-доказательств и норм")
+    events = [e for e in events if e["type_id"] not in DISABLED_TYPES]
     events = merge(events)
     use_qwen_legal = not vlm_down and left() > 15
     violations = [build_violation(v, e, legal_chat=chat_text if use_qwen_legal else None) for e in events]
@@ -515,7 +524,7 @@ def analyze(path, progress=lambda p, msg: None, t0=None):
             "zone": zone, "zones": zs.to_json(), "tracks": pose_res.get("tracks", []),
             "rule_events": pose_res.get("rule_events", []), "roles": pose_res.get("roles", {}),
             "elapsed_sec": round(time.time() - t0, 1), "windows": len(windows), "candidates": len(cands),
-            "_vis": {"scene": pose_res.get("scene"), "zones": zs}}
+            "cands_debug": debug, "_vis": {"scene": pose_res.get("scene"), "zones": zs}}
 
 
 def motion(v, w, zone):
@@ -561,8 +570,12 @@ def _rule_event(c, verification, a=None, ts=None, zone=None):
 def decide(c, zone):
     """Голосование по перепроверкам. Пропуск хуже ложной тревоги."""
     answered = [(a, ts) for a, ts in c.get("votes", []) if a]
-    yes = [(a, ts) for a, ts in answered if a.get("violation") and float(a.get("confidence") or 0) >= THRESH]
-    if c.get("src") == "rule" and c.get("requires_vlm") is False:
+    yes = [(a, ts) for a, ts in answered if a.get("violation") and float(a.get("confidence") or 0)
+           >= max(THRESH, TYPE_THRESH.get(norm_type(a.get("type_id")), 0.0))]
+    det = c.get("src") == "rule" and c.get("requires_vlm") is False
+    if det and DET_MODE == "off":
+        return []
+    if det and DET_MODE == "veto":
         # детерминированное правило: Qwen может только отклонить (уверенное «нет» во всех ответах)
         if answered and not yes and all(not a.get("violation") and float(a.get("confidence") or 0) < VETO_T
                                          for a, _ in answered):
@@ -570,7 +583,8 @@ def decide(c, zone):
             return []
         best = max(yes, key=lambda x: float(x[0].get("confidence") or 0)) if yes else (None, None)
         return [_rule_event(c, "confirmed" if yes else ("rule" if answered else "unverified"), best[0], best[1], zone)]
-    if yes and len(yes) * 2 >= len(answered):          # большинство или ничья — за нарушение
+    need = {"all": len(answered), "majority": len(answered) // 2 + 1}.get(VOTE_RULE, (len(answered) + 1) // 2)
+    if yes and len(yes) >= max(need, 1):                # tie: большинство или ничья — за нарушение
         a, ts = max(yes, key=lambda x: float(x[0].get("confidence") or 0))
         fi = min(max(int(a.get("frame_index") or 0), 0), len(ts) - 1)
         conf = sum(float(x[0].get("confidence") or 0) for x in yes) / len(yes)
@@ -586,6 +600,22 @@ def decide(c, zone):
         return [{"type_id": norm_type(c["type_id"]), "t": c["t"], "conf": c["s"] * 0.8,
                  "observation": c["obs"], "bbox": None, "verification": "scan"}]
     return []
+
+
+def _cand_debug(c, kept):
+    """Журнал решения по кандидату: по нему tools/tune.py подбирает пороги без повторных вызовов модели."""
+    votes = []
+    for a, ts in c.get("votes", []):
+        if a:
+            fi = min(max(int(a.get("frame_index") or 0), 0), len(ts) - 1) if ts else 0
+            votes.append({"v": bool(a.get("violation")), "c": round(float(a.get("confidence") or 0), 3),
+                          "type": norm_type(a.get("type_id")) if a.get("violation") else "NONE",
+                          "t": ts[fi] if ts else c["t"]})
+        else:
+            votes.append(None)
+    return {"t": c["t"], "src": c.get("src"), "rule": c.get("rule"), "type": norm_type(c.get("type_id")),
+            "s": round(float(c.get("s") or 0), 3), "det": c.get("src") == "rule" and c.get("requires_vlm") is False,
+            "votes": votes, "kept": kept}
 
 
 def nms(items, gap):
