@@ -44,6 +44,7 @@ VERIFY_FRAMES = min(int(E("VERIFY_FRAMES", 12)), VLM_MAX_IMAGES)  # кадров
 VOTES = int(E("VOTES", 2))                  # сколько раз перепроверять кандидата
 MAX_SIDE = int(E("MAX_SIDE", 640))          # размер кадра для VLM
 CACHE_SIDE = int(E("CACHE_SIDE", 960))      # размер кадров в памяти (и кадров-доказательств)
+VERIFY_SIDE = int(E("VERIFY_SIDE", MAX_SIDE))  # размер кадра при перепроверке: крупнее — видна купюра в руке
 PARALLEL = int(E("PARALLEL", 16))
 CAND_T = float(E("CAND_T", 0.35))           # порог кандидата по скану
 THRESH = float(E("THRESH", 0.5))            # порог подтверждения проверкой
@@ -166,6 +167,14 @@ BASE = (
     "инкассатор — приносит или забирает сумки с ценностями.\n"
     "Оценивай ТОЛЬКО то, что действительно видно на кадрах. Не додумывай то, чего не видно "
     "(документы, проводки, суммы). Обычная работа кассира — НЕ нарушение.\n"
+    "Камера далеко и сверху: купюры выглядят как небольшие светлые или цветные прямоугольники бумаги, "
+    "часто сложенные пачкой. То, что клиент передаёт кассиру, а кассир пересчитывает, — как правило, наличные. "
+    "Если не можешь различить, купюра это или карта, так и напиши («купюра или карта») и оценивай действия рук.\n"
+    "Сокрытие денег видно по рукам, даже если сам предмет не различим: после получения денег кассир отделяет часть "
+    "и опускает руку ниже уровня стола, к коленям, в карман, рукав, под клавиатуру или в ящик вне обзора клиента, "
+    "пока другая рука работает со счётчиком или стопкой.\n"
+    "confidence — вероятность того, что НАРУШЕНИЕ ЕСТЬ: 0 — точно нет, 1 — точно есть "
+    "(это НЕ уверенность в ответе: если нарушения нет, confidence близко к 0).\n"
     "Возможные нарушения:\n{rules}\n"
 )
 
@@ -175,7 +184,7 @@ SCAN_PROMPT = BASE + (
     "Ответ строго одним JSON:\n"
     '{{"observation": "1-2 предложения по-русски", "violation": true или false, '
     '"type_id": "<id из списка или NONE>", "frame_index": <номер самого показательного кадра>, '
-    '"confidence": <число 0..1 — насколько вероятно нарушение>}}'
+    '"confidence": <вероятность нарушения 0..1>}}'
 )
 
 VERIFY_PROMPT = BASE + (
@@ -190,7 +199,7 @@ VERIFY_PROMPT = BASE + (
     '"violation": true или false, "type_id": "<id или NONE>", '
     '"object_type": "banknote" | "card" | "phone" | "paper" | "unknown", '
     '"frame_index": <номер кадра с самым явным моментом>, "evidence_frames": [<номера кадров, подтверждающих событие>], '
-    '"confidence": <число 0..1>, "bbox": [x1,y1,x2,y2] — рамка вокруг главного объекта на этом кадре '
+    '"confidence": <вероятность нарушения 0..1>, "bbox": [x1,y1,x2,y2] — рамка вокруг главного объекта на этом кадре '
     'в координатах 0..1000, или null}}'
 )
 
@@ -283,7 +292,7 @@ def _chat_once(system, content, max_tokens):
     return parse_json(_post(VLM_URL, body)["choices"][0]["message"]["content"])
 
 
-def frames_content(frames_t, zone, tail):
+def frames_content(frames_t, zone, tail, side=None):
     content = []
     if BACKEND == "ollama":                        # родной API Ollama: картинки идут по порядку, подписи — одним текстом
         content.append({"type": "text", "text": "Кадры по порядку: " +
@@ -292,7 +301,7 @@ def frames_content(frames_t, zone, tail):
         if BACKEND != "ollama":
             content.append({"type": "text", "text": f"Кадр {i}, t={t:.1f}с"})
         content.append({"type": "image_url",
-                        "image_url": {"url": "data:image/jpeg;base64," + jpg_b64(resize(crop(fr, zone)))}})
+                        "image_url": {"url": "data:image/jpeg;base64," + jpg_b64(resize(crop(fr, zone), side or MAX_SIDE))}})
     content.append({"type": "text", "text": tail})
     return content
 
@@ -313,7 +322,8 @@ def ask_verify(frames_t, zone, hint_text):
     if VLM_MOCK:
         return None            # тестовый режим: «ответа нет» — правила дают unverified, а не отклоняются
     return norm_answer(chat(VERIFY_PROMPT.format(rules=rules_text(), hint=hint_text),
-                            frames_content(frames_t, zone, "Перепроверь фрагмент. Ответь JSON."), max_tokens=600))
+                            frames_content(frames_t, zone, "Перепроверь фрагмент. Ответь JSON.", side=VERIFY_SIDE),
+                            max_tokens=600))
 
 
 def _union(boxes):
