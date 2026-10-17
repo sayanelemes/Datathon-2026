@@ -21,7 +21,9 @@ CYR = str.maketrans({"Х": "X", "х": "x", "Е": "E", "е": "e", "А": "A", "а"
 
 
 def norm(name):
-    return re.sub(r"[\s_]+", "", os.path.splitext(str(name))[0].translate(CYR)).lower()
+    s = os.path.splitext(str(name))[0]
+    s = re.sub(r"#U([0-9A-Fa-f]{4})", lambda m: chr(int(m.group(1), 16)), s)   # unzip без UTF-8: «Х» → «#U0425»
+    return re.sub(r"[\s_]+", "", s.translate(CYR)).lower()
 
 
 def seconds(v):
