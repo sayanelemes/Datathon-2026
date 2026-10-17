@@ -43,6 +43,7 @@ VPORT="$(echo "${VLM_URL:-http://127.0.0.1:18001/v1}" | sed -E 's#^[a-z]+://[^:/
 start_vllm() {
   [ -f "$MODEL_DIR/config.json" ] || { echo "[!] Нет весов в $MODEL_DIR — запустите runpod/setup.sh $PROFILE"; exit 1; }
   echo "$(date +%T) запускаю vLLM ($MODEL_DIR) — первый старт 2–5 минут, журнал: $LOGS/vllm.log"
+  [ -f "$LOGS/vllm.log" ] && mv -f "$LOGS/vllm.log" "$LOGS/vllm.prev.log"   # журнал — только текущего запуска
   nohup vllm serve "$MODEL_DIR" --served-model-name qwen --host 127.0.0.1 --port "$VPORT" \
     --max-model-len "${MAX_LEN:-16384}" --max-num-seqs "${MAX_NUM_SEQS:-32}" \
     --limit-mm-per-prompt "{\"image\":${VLM_MAX_IMAGES:-16}}" --gpu-memory-utilization "${GPU_UTIL:-0.80}" \
