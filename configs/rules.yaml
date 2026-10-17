@@ -68,7 +68,8 @@ rules:
 
   cashier_left_workspace:
     enabled: true
-    maps_to: CASHIER_LEFT_DURING_SERVICE
+    maps_to: CASHIER_LEFT_DURING_SERVICE      # уход при клиенте (п. 22)
+    maps_to_no_client: KEY_LEFT_UNATTENDED     # уход без клиента — проверить ключ / шкафчик (п. 80)
     requires_vlm: false
     min_absence_sec: 10.0          # отсутствие >= 10 с — нарушение по правилу (Qwen может только отклонить)
     soft_absence_sec: 3.0          # 3–10 с — только кандидат для проверки Qwen

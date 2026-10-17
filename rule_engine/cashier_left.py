@@ -38,10 +38,14 @@ def run(scene: Scene, cfg: dict[str, Any]) -> list[RuleResult]:
         last_seen = max((t for t, o in zip(times, occupied) if o and t < s), default=s)
         desc = (f"по трекингу: кассира нет на рабочем месте с {s:.1f} до {e:.1f} с ({dur:.0f} с)"
                 + (", клиент у кассы" if with_client else ""))
+        # без клиента сам уход не нарушение — проверяем, забрал ли кассир ключ от шкафчика (п. 80)
+        maps = cfg.get("maps_to", "CASHIER_LEFT_DURING_SERVICE") if with_client else cfg.get("maps_to_no_client", "KEY_LEFT_UNATTENDED")
+        if not with_client:
+            desc += "; проверь, запер ли кассир шкафчик и забрал ли ключ"
         out.append(RuleResult(
             NAME, round(s, 2), round(e, 2), [], sorted({round(last_seen, 2), round(s + 0.5, 2), round(min(s + hard, e), 2)}),
             round(conf, 3), {"absence_sec": round(dur, 1), "client_present": with_client, "zone_based": zone,
                              "until_video_end": e >= times[-1] - scene.dt},
-            maps_to=cfg.get("maps_to", "CASHIER_LEFT_DURING_SERVICE"), requires_vlm=requires_vlm,
-            description=desc, key_time_sec=round(s + 0.5, 2)))
+            maps_to=maps, requires_vlm=requires_vlm,
+            description=desc, key_time_sec=round(max(s - 1.0, first), 2)))   # момент перед уходом: ключ / шкафчик
     return out

@@ -126,10 +126,16 @@ class Video:
         return {t: self._cache[t] for t in times if t in self._cache}
 
 
-def resize(fr, max_side=MAX_SIDE):
+def resize(fr, max_side=MAX_SIDE, up=False):
+    """Уменьшает до max_side; up=True — и увеличивает маленькие кадры (не больше чем в 2 раза)."""
     h, w = fr.shape[:2]
     s = max_side / max(h, w)
-    return cv2.resize(fr, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA) if s < 1 else fr
+    if s < 1:
+        return cv2.resize(fr, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA)
+    if up and s > 1.05:
+        s = min(s, 2.0)
+        return cv2.resize(fr, (int(w * s), int(h * s)), interpolation=cv2.INTER_CUBIC)
+    return fr
 
 
 def jpg_b64(fr, q=85):
@@ -197,6 +203,9 @@ VERIFY_PROMPT = BASE + (
     "\nЭто ПЕРЕПРОВЕРКА подозрительного момента. Кадры идут плотно, по порядку, с подписанным временем.\n"
     "Подсказка предварительного анализа (может быть ошибочной): {hint}\n"
     "Шаг 1: про себя опиши по кадрам, что делает кассир руками и что происходит с деньгами, сумками, телефоном.\n"
+    "Если кассир уходит с рабочего места: посмотри, запер ли он шкафчик / ящик / сейф и ЗАБРАЛ ЛИ КЛЮЧ "
+    "(положил в карман, унёс в руке). Ключ остался в замке или на столе, шкафчик открыт — KEY_LEFT_UNATTENDED. "
+    "Ключ забран и всё закрыто — нарушения нет. Уход без клиента сам по себе НЕ нарушение.\n"
     "Шаг 2: реши, есть ли нарушение из списка. Если действие обычное или его не видно — violation=false.\n"
     "Определи предмет, если применимо: banknote (купюры), card (карта), phone (телефон), paper (документ), unknown.\n"
     "Не выдумывай факты. Если данных недостаточно — object_type=unknown и низкий confidence.\n"
@@ -307,7 +316,7 @@ def frames_content(frames_t, zone, tail, side=None):
         if BACKEND != "ollama":
             content.append({"type": "text", "text": f"Кадр {i}, t={t:.1f}с"})
         content.append({"type": "image_url",
-                        "image_url": {"url": "data:image/jpeg;base64," + jpg_b64(resize(crop(fr, zone), side or MAX_SIDE))}})
+                        "image_url": {"url": "data:image/jpeg;base64," + jpg_b64(resize(crop(fr, zone), side or MAX_SIDE, up=bool(side and side > MAX_SIDE)))}})
     content.append({"type": "text", "text": tail})
     return content
 
