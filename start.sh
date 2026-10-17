@@ -33,17 +33,18 @@ PY="${PY:-python3}"; [ -x .venv/bin/python ] && PY=.venv/bin/python
 echo "Профиль: $PROFILE  (модель $VLM_MODEL, бэкенд $BACKEND, видео одновременно: ${WORKERS:-1})"
 
 up() { curl -sf -m 5 "$1" >/dev/null 2>&1; }
+VPORT="$(echo "${VLM_URL:-http://127.0.0.1:18001/v1}" | sed -E 's#^[a-z]+://[^:/]+:([0-9]+).*#\1#')"   # порт vLLM — из VLM_URL профиля
 
 start_vllm() {
   [ -f "$MODEL_DIR/config.json" ] || { echo "[!] Нет весов в $MODEL_DIR — запустите runpod/setup.sh $PROFILE"; exit 1; }
   echo "$(date +%T) запускаю vLLM ($MODEL_DIR) — первый старт 2–5 минут, журнал: $LOGS/vllm.log"
-  nohup vllm serve "$MODEL_DIR" --served-model-name qwen --host 127.0.0.1 --port 8001 \
+  nohup vllm serve "$MODEL_DIR" --served-model-name qwen --host 127.0.0.1 --port "$VPORT" \
     --max-model-len "${MAX_LEN:-16384}" --max-num-seqs "${MAX_NUM_SEQS:-32}" \
     --limit-mm-per-prompt "{\"image\":${VLM_MAX_IMAGES:-16}}" --gpu-memory-utilization "${GPU_UTIL:-0.80}" \
     --enable-prefix-caching >> "$LOGS/vllm.log" 2>&1 &
   echo $! > "$LOGS/vllm.pid"
   for i in $(seq 1 120); do                 # до 10 минут
-    up localhost:8001/health && { echo "$(date +%T) vLLM готов"; return 0; }
+    qwen_up && { echo "$(date +%T) vLLM готов"; return 0; }
     kill -0 "$(cat "$LOGS/vllm.pid")" 2>/dev/null || { echo "[!] vLLM упал при запуске:"; tail -30 "$LOGS/vllm.log"; exit 1; }
     sleep 5
   done
@@ -58,7 +59,10 @@ start_ollama() {
   fi
 }
 
-model_up() { if [ "$BACKEND" = "vllm" ]; then up localhost:8001/health; else up localhost:11434/api/tags; fi; }
+# модель «работает», только если на порту отвечает именно наш vLLM с моделью qwen
+# (в шаблоне RunPod PyTorch на 8001 сидит служебный nginx — простая проверка /health его не отличит)
+qwen_up() { curl -sf -m 5 "localhost:$VPORT/v1/models" 2>/dev/null | grep -q '"qwen"'; }
+model_up() { if [ "$BACKEND" = "vllm" ]; then qwen_up; else up localhost:11434/api/tags; fi; }
 start_model() { if [ "$BACKEND" = "vllm" ]; then start_vllm; else start_ollama; fi; }
 
 model_up || start_model

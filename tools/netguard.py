@@ -137,7 +137,7 @@ def watched(pid, me):
             return True
         pid = _ppid(pid)
     return False
-SERVER_PORTS = {8000, 8001, 8888, 11434, 22}       # входящие подключения к нам (жюри, браузер, Jupyter) — не исходящие
+SERVER_PORTS = {8000, 8001, 18001, 8888, 11434, 22}       # входящие подключения к нам (жюри, браузер, Jupyter) — не исходящие
 
 
 def _ext(addr):
@@ -192,7 +192,7 @@ def proc_env(name, key):
 
 
 def port_pid(port):
-    """PID процесса, который слушает порт (vLLM — 8001)."""
+    """PID процесса, который слушает порт (vLLM — 18001)."""
     inodes = {ino for la, lp, ra, rp, st, ino in _sockets() if st == "0A" and lp == port}
     m = _inode_pids()
     for ino in inodes:

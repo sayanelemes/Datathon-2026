@@ -193,13 +193,14 @@ def offline(src):
         print(f"  [i] сняты переменные прокси {', '.join(netguard.PROXIES)} — через прокси трафик ушёл бы мимо проверки")
     netguard.BLOCKED.clear()
 
-    vl = netguard.listen_addr(8001)
+    vport = int(__import__("re").search(r":(\d+)/", pipeline.VLM_URL + "/").group(1)) if pipeline.BACKEND == "vllm" else 11434
+    vl = netguard.listen_addr(vport)
     if vl:
         mark = OK if all(x in ("127.0.0.1", "::1") for x in vl) else BAD
-        print(f"{mark} vLLM слушает только {', '.join(vl)}:8001 — снаружи модель недоступна")
+        print(f"{mark} vLLM слушает только {', '.join(vl)}:{vport} — снаружи модель недоступна")
         if mark == BAD:
             fails.append("vLLM слушает внешний адрес")
-    mp = netguard.port_pid(8001 if pipeline.BACKEND == "vllm" else 11434)
+    mp = netguard.port_pid(vport)
     off = netguard.pid_env(mp, "HF_HUB_OFFLINE") if mp and pipeline.BACKEND == "vllm" else None
     if off is not None:
         print(f"{OK if off == '1' else BAD} у процесса модели (PID {mp}: {netguard.cmdline(mp)[:40]}…) HF_HUB_OFFLINE={off}")

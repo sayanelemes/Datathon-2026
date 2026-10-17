@@ -63,7 +63,7 @@ def env_bool(name: str, default: bool) -> bool:
 
 def vlm_url() -> str:
     """VLM_URL (полный адрес chat/completions) или VLLM_URL (базовый адрес vLLM, как в мастер-промпте)."""
-    url = E("VLM_URL") or E("VLLM_URL") or "http://127.0.0.1:8001/v1/chat/completions"
+    url = E("VLM_URL") or E("VLLM_URL") or "http://127.0.0.1:18001/v1/chat/completions"
     url = url.rstrip("/")
     if url.endswith("/chat/completions"):
         return url
