@@ -341,7 +341,7 @@ $('go').onclick=async e=>{
   addHist({id:j.job_id,name:file.name,status:'processing'});poll(j.job_id,true);
 };
 $('demo').onclick=async()=>{
-  const j=await(await fetch('/static/demo/result.json')).json();
+  let j;try{const r=await fetch('/static/demo/result.json');if(!r.ok)throw 0;j=await r.json()}catch(e){prog(0,'Пример проверки на этом сервере не установлен — загрузите своё видео.');return}
   render(j,'/static/demo/demo.mp4');
 };
 function prog(p,msg){$('prog').style.display='block';$('pbar').style.width=p+'%';$('stage').textContent=msg}
