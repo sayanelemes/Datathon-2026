@@ -6,7 +6,7 @@ models/
 static/fonts/
 *.mov
 *.mp4
-!static/demo/demo.mp4
+static/demo/
 # секреты
 .env
 2mp_api_key
